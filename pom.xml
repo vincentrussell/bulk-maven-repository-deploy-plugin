@@ -5,7 +5,7 @@
 
   <groupId>com.github.vincentrussell</groupId>
   <artifactId>bulk-maven-repository-deploy-plugin</artifactId>
-  <version>1.0</version>
+  <version>1.1-SNAPSHOT</version>
   <packaging>maven-plugin</packaging>
 
   <name>bulk-maven-repository-deploy-plugin Maven Plugin</name>
