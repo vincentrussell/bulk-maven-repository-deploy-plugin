@@ -1,5 +1,9 @@
 package com.github.vincentrussell;
 
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServlet;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import me.alexpanov.net.FreePortFinder;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
@@ -30,10 +34,6 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
-import javax.servlet.ServletException;
-import javax.servlet.http.HttpServlet;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -267,10 +267,8 @@ public class BulkImportMojoTest extends AbstractMojoTestCase {
             this.baseDir = baseDir;
         }
 
-        protected void doGet(
-                HttpServletRequest request,
-                HttpServletResponse response)
-                throws ServletException, IOException {
+        @Override
+        protected void doGet(HttpServletRequest request, HttpServletResponse response) throws jakarta.servlet.ServletException, IOException {
 
             String url = request.getRequestURI();
 
@@ -295,10 +293,8 @@ public class BulkImportMojoTest extends AbstractMojoTestCase {
 
         }
 
-        protected void doPut(
-                HttpServletRequest request,
-                HttpServletResponse response)
-                throws ServletException, IOException {
+        @Override
+        protected void doPut(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
 
             String pathInfo = request.getPathInfo();
 
