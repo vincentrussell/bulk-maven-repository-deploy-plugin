@@ -1,6 +1,6 @@
 package com.github.vincentrussell;
 
-import com.google.common.io.Files;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.maven.artifact.Artifact;
 import org.apache.maven.artifact.ArtifactUtils;
 import org.apache.maven.artifact.DefaultArtifact;
@@ -18,16 +18,18 @@ import org.apache.maven.shared.transfer.project.NoFileAssignedException;
 import org.apache.maven.shared.transfer.project.deploy.ProjectDeployer;
 import org.apache.maven.shared.transfer.project.deploy.ProjectDeployerRequest;
 import org.apache.maven.shared.utils.Os;
-import org.codehaus.plexus.util.StringUtils;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.List;
+import java.util.Objects;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
 import static org.apache.commons.lang3.Validate.isTrue;
 import static org.apache.commons.lang3.Validate.notNull;
@@ -41,10 +43,12 @@ public class BulkUploader {
     private final ArtifactDeployer artifactDeployer;
     private final DeploymentType deploymentType;
     private final Log log;
-    private File repositoryDirectory;
+    private final File repositoryDirectory;
+    private final String repositorySubDirectory;
 
     private BulkUploader(final Builder builder) {
         this.repositoryDirectory = builder.repositoryDirectory;
+        this.repositorySubDirectory = builder.repositorySubDirectory;
         this.artifactRepository = builder.artifactRepository;
         this.projectDeployer = builder.projectDeployer;
         this.projectBuilder = builder.projectBuilder;
@@ -59,7 +63,7 @@ public class BulkUploader {
         notNull(repositoryDirectory, "repositoryDirectory is null");
         isTrue(repositoryDirectory.exists(), "%s does not exit directory", repositoryDirectory.getAbsolutePath());
         isTrue(repositoryDirectory.isDirectory(), "%s is not a directory", repositoryDirectory.getAbsolutePath());
-        notNull(artifactRepository, "artifactHandler is null");
+        notNull(artifactRepository, "artifactRepository is null");
         notNull(projectDeployer, "projectDeployer is null");
         notNull(projectBuilder, "projectBuilder is null");
         notNull(mavenSession, "mavenSession is null");
@@ -69,13 +73,23 @@ public class BulkUploader {
 
 
         String protocol = artifactRepository.getProtocol();
-        if ( StringUtils.isEmpty( protocol ) )
-        {
-            throw new IOException( "No transfer protocol found." );
+        if (StringUtils.isEmpty(protocol)) {
+            throw new IOException("No transfer protocol found.");
         }
 
-        for (Iterator<File> iterator = Files.fileTraverser().breadthFirst(repositoryDirectory).iterator(); iterator.hasNext();) {
-            final File file = iterator.next();
+        File artifactsPath;
+        if (StringUtils.isNotBlank(repositorySubDirectory)) {
+            artifactsPath = new File(repositoryDirectory + File.separator + repositorySubDirectory);
+        } else {
+            artifactsPath = repositoryDirectory;
+        }
+
+        List<File> artifactFiles;
+        try (Stream<Path> walk = Files.walk(artifactsPath.toPath())) {
+            artifactFiles = walk.map(Path::toFile).toList();
+        }
+
+        for (final File file : artifactFiles) {
             if (file.isFile()) {
                 Artifact artifact = getArtifact(file);
                 if (artifact != null) {
@@ -88,46 +102,41 @@ public class BulkUploader {
 
                     if (!DeploymentType.SNAPSHOT_AND_RELEASE.equals(deploymentType)
                             && isSnapshot && DeploymentType.RELEASE_ONLY.equals(deploymentType)) {
-                        log.info(String.format("artifact %s is considered to be a snapshot and will not be deployed", artifact.toString()));
+                        log.info(String.format("artifact %s is considered to be a snapshot and will not be deployed", artifact));
                         continue;
                     } else if (!DeploymentType.SNAPSHOT_AND_RELEASE.equals(deploymentType)
                             && !isSnapshot && DeploymentType.SNAPSHOT_ONLY.equals(deploymentType)) {
-                        log.info(String.format("artifact %s is considered to be a release and will not be deployed", artifact.toString()));
+                        log.info(String.format("artifact %s is considered to be a release and will not be deployed", artifact));
                         continue;
                     }
 
                     MavenProject project = createMavenProject(artifact);
                     List<Artifact> deployableArtifacts = new ArrayList<>();
 
-
-                    if ( artifact.getClassifier() == null ) {
-                        artifact.setFile( file );
-                        deployableArtifacts.add( artifact );
+                    if (artifact.getClassifier() == null) {
+                        artifact.setFile(file);
+                        deployableArtifacts.add(artifact);
                     } else {
-                        projectHelper.attachArtifact( project, artifact.getType(), artifact.getClassifier(), file );
+                        projectHelper.attachArtifact(project, artifact.getType(), artifact.getClassifier(), file);
                     }
 
                     List<Artifact> attachedArtifacts = project.getAttachedArtifacts();
-
-                    for ( Artifact attached : attachedArtifacts ) {
-                        deployableArtifacts.add( attached );
-                    }
+                    deployableArtifacts.addAll(attachedArtifacts);
 
                     try {
-                        artifactDeployer.deploy( mavenSession.getProjectBuildingRequest(), artifactRepository,
-                                deployableArtifacts );
+                        artifactDeployer.deploy(mavenSession.getProjectBuildingRequest(), artifactRepository,
+                                deployableArtifacts);
                     } catch (ArtifactDeployerException e) {
                         if (e.getMessage().contains("Repository does not allow updating assets")) {
                             log.error(String.format("artifact %s failed deployment because it already exists in repo",
-                                    artifact.toString()));
+                                    artifact));
                             continue;
                         } else {
-                            log.error(String.format("artifact %s deployment failed because %s", artifact.toString(),
-                                    e.getMessage()));
+                            log.error(String.format("artifact %s deployment failed because %s", artifact, e.getMessage()));
                         }
                         throw new IOException(e);
                     }
-                    log.info(String.format("artifact %s deployed successfully", artifact.toString()));
+                    log.info(String.format("artifact %s deployed successfully", artifact));
                 }
             }
         }
@@ -135,10 +144,7 @@ public class BulkUploader {
     }
 
     private boolean isHashFile(final String type) {
-        if (type != null && (type.endsWith("sha1") || type.endsWith("md5"))) {
-            return true;
-        }
-        return false;
+        return type != null && (type.endsWith("sha1") || type.endsWith("md5"));
     }
 
     private Artifact getArtifact(final File file) {
@@ -149,7 +155,7 @@ public class BulkUploader {
             final String artifactId = artifactIdDirectory.getName();
 
             final Pattern artifactPattern = Pattern.compile("^" + artifactId
-                    + "-" + version + "\\-{0,1}([^\\.][\\S]+?){0,1}\\.(\\S+){1}$");
+                    + "-" + version + "-{0,1}([^.][\\S]+?){0,1}\\.(\\S+){1}$");
 
             final Matcher matcher = artifactPattern.matcher(file.getName());
             if (matcher.matches()) {
@@ -161,58 +167,64 @@ public class BulkUploader {
                         .replaceAll(repositoryDirectory.toPath().toString(), "")
                         .substring(1).replaceAll("/", ".");
 
-                Artifact artifact =  new DefaultArtifact(groupId, artifactId, version, "runtime",
+                Artifact artifact = new DefaultArtifact(groupId, artifactId, version, "runtime",
                         extension, classifier, new DefaultArtifactHandler(extension));
-                notNull(artifact.getType());
-                return  artifact;
+                Objects.requireNonNull(artifact.getType());
+                return artifact;
             } else {
                 return null;
             }
-        } catch (Throwable t) {
+        } catch (Exception t) {
             return null;
         }
     }
 
     private MavenProject createMavenProject(Artifact artifact) throws IOException {
-        ModelSource modelSource =
-                new StringModelSource( "<project>"
-                        + "<modelVersion>4.0.0</modelVersion>" + "<groupId>" + artifact.getGroupId()
-                        + "</groupId>" + "<artifactId>" + artifact.getArtifactId() + "</artifactId>"
-                        + "<version>" + artifact.getVersion() + "</version>"
-                        + "<packaging>" + artifact.getType() + "</packaging>" + "</project>" );
+
+        ModelSource modelSource = new StringModelSource("""
+        <project>
+          <modelVersion>4.0.0</modelVersion>
+          <groupId>%s</groupId>
+          <artifactId>%s</artifactId>
+          <version>%s</version>
+          <packaging>%s</packaging>
+        </project>
+        """.formatted(
+                artifact.getGroupId(),
+                artifact.getArtifactId(),
+                artifact.getVersion(),
+                artifact.getType()
+        ));
+
         DefaultProjectBuildingRequest buildingRequest =
-                new DefaultProjectBuildingRequest( mavenSession.getProjectBuildingRequest() );
-        buildingRequest.setProcessPlugins( false );
-        try
-        {
-            return projectBuilder.build( modelSource, buildingRequest ).getProject();
-        }
-        catch ( ProjectBuildingException e )
-        {
-            if ( e.getCause() instanceof ModelBuildingException)
-            {
-                throw new IOException( "The artifact information is not valid:" + Os.LINE_SEP
-                        + e.getCause().getMessage() );
+                new DefaultProjectBuildingRequest(mavenSession.getProjectBuildingRequest());
+        buildingRequest.setProcessPlugins(false);
+        try {
+            return projectBuilder.build(modelSource, buildingRequest).getProject();
+        } catch (ProjectBuildingException e) {
+            if (e.getCause() instanceof ModelBuildingException) {
+                throw new IOException("The artifact information is not valid:" + Os.LINE_SEP
+                        + e.getCause().getMessage());
             }
-            throw new IOException( "Unable to create the project.", e );
+            throw new IOException("Unable to create the project.", e);
         }
     }
 
-    private void deployProject(ProjectBuildingRequest pbr, ProjectDeployerRequest pir, ArtifactRepository repo )
+    private void deployProject(ProjectBuildingRequest pbr, ProjectDeployerRequest pir, ArtifactRepository repo)
             throws IOException {
         try {
-            projectDeployer.deploy( pbr, pir, repo );
-        } catch ( NoFileAssignedException e ) {
-            throw new IOException( "NoFileAssignedException", e );
-        } catch ( ArtifactDeployerException e ) {
-            throw new IOException( "ArtifactDeployerException", e );
+            projectDeployer.deploy(pbr, pir, repo);
+        } catch (NoFileAssignedException e) {
+            throw new IOException("NoFileAssignedException", e);
+        } catch (ArtifactDeployerException e) {
+            throw new IOException("ArtifactDeployerException", e);
         }
     }
 
-
     public static class Builder {
-        private File repositoryDirectory  = Paths.get(System.getProperty("user.home"),
+        private File repositoryDirectory = Paths.get(System.getProperty("user.home"),
                 ".m2", "repository").toFile();
+        private String repositorySubDirectory;
         private ArtifactRepository artifactRepository;
         private ProjectDeployer projectDeployer;
         private ProjectBuilder projectBuilder;
@@ -222,9 +234,13 @@ public class BulkUploader {
         private DeploymentType deploymentType = DeploymentType.RELEASE_ONLY;
         private Log log;
 
-
         public Builder setRepositoryDirectory(final File repositoryDirectory) {
             this.repositoryDirectory = repositoryDirectory;
+            return this;
+        }
+
+        public Builder setRepositorySubDirectory(final String repositorySubDirectory) {
+            this.repositorySubDirectory = repositorySubDirectory;
             return this;
         }
 
@@ -260,7 +276,7 @@ public class BulkUploader {
         }
 
         public Builder setLogger(Log log) {
-            this.log =log;
+            this.log = log;
             return this;
         }
 
@@ -272,6 +288,5 @@ public class BulkUploader {
         public BulkUploader build() {
             return new BulkUploader(this);
         }
-
     }
 }

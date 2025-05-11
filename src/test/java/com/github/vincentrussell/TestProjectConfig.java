@@ -6,17 +6,17 @@ import org.junit.rules.TemporaryFolder;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 
 public class TestProjectConfig {
-
+    private static final String TEXT;
     private final TemporaryFolder temporaryFolder;
-
-    private static String TEXT = null;
 
     static {
         try {
-            TEXT = IOUtils.toString(TestProjectConfig.class.getResourceAsStream("/test-project-config-pom.xml"), "UTF-8");
-        } catch (IOException e) {
+            TEXT = IOUtils.toString(TestProjectConfig.class.getResourceAsStream("/test-project-config-pom.xml"),
+                    StandardCharsets.UTF_8);
+        } catch (Exception e) {
             throw new RuntimeException(e);
         }
     }
@@ -28,7 +28,7 @@ public class TestProjectConfig {
     public File getFile(final String config) throws IOException {
         File folder = temporaryFolder.newFolder("newProject");
         File newFile = new File(folder, "pom.xml");
-        FileUtils.write(newFile, TEXT.replaceAll("REPLACE_ME", config), "UTF-8");
+        FileUtils.write(newFile, TEXT.replaceAll("REPLACE_ME", config), StandardCharsets.UTF_8);
         return newFile;
     }
 }
