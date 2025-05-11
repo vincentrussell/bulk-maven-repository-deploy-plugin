@@ -59,6 +59,20 @@ public class BulkImportMojo extends AbstractMojo {
     @Parameter(property = "repositorySubDirectory")
     private String repositorySubDirectory;
 
+    /**
+     * If you don't want to upload all artifacts in the .m2 folder,
+     * use this argument to specify just the group to upload (e.g. org.apache)
+     */
+    @Parameter(property = "groupId")
+    private String groupId;
+
+    /**
+     * If you don't want to upload all artifacts in the .m2 folder,
+     * use this argument to specify just the artifactName to upload (e.g. commons-lang)
+     */
+    @Parameter(property = "artifactId")
+    private String artifactId;
+
     @Parameter(defaultValue = "${session}", readonly = true, required = true)
     private MavenSession session;
 
@@ -101,6 +115,8 @@ public class BulkImportMojo extends AbstractMojo {
                 .setDeploymentType(deploymentType)
                 .setRepositoryDirectory(repositoryBase != null ? repositoryBase : new File(localRepository.getBasedir()))
                 .setRepositorySubDirectory(repositorySubDirectory)
+                .setGroupId(groupId)
+                .setArtifactId(artifactId)
                 .setArtifactRepository(createDeploymentArtifactRepository(repositoryId, repositoryUrl))
                 .setProjectDeployer(projectDeployer)
                 .setProjectBuilder(projectBuilder)

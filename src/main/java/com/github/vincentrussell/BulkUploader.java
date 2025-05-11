@@ -45,10 +45,14 @@ public class BulkUploader {
     private final Log log;
     private final File repositoryDirectory;
     private final String repositorySubDirectory;
+    private final String groupId;
+    private final String artifactid;
 
     private BulkUploader(final Builder builder) {
         this.repositoryDirectory = builder.repositoryDirectory;
         this.repositorySubDirectory = builder.repositorySubDirectory;
+        this.groupId = builder.groupId;
+        this.artifactid = builder.artifactId;
         this.artifactRepository = builder.artifactRepository;
         this.projectDeployer = builder.projectDeployer;
         this.projectBuilder = builder.projectBuilder;
@@ -107,6 +111,18 @@ public class BulkUploader {
                     } else if (!DeploymentType.SNAPSHOT_AND_RELEASE.equals(deploymentType)
                             && !isSnapshot && DeploymentType.SNAPSHOT_ONLY.equals(deploymentType)) {
                         log.info(String.format("artifact %s is considered to be a release and will not be deployed", artifact));
+                        continue;
+                    }
+
+                    if (StringUtils.isNotBlank(groupId) && !artifact.getGroupId().equals(groupId)) {
+                        log.info(String.format("artifact group %s does not match required group %s",
+                                artifact.getGroupId(), groupId));
+                        continue;
+                    }
+
+                    if (StringUtils.isNotBlank(artifactid) && !artifact.getArtifactId().equals(artifactid)) {
+                        log.info(String.format("artifact %s does not match required group %s",
+                                artifact.getArtifactId(), artifactid));
                         continue;
                     }
 
@@ -233,6 +249,8 @@ public class BulkUploader {
         private ArtifactDeployer artifactDeployer;
         private DeploymentType deploymentType = DeploymentType.RELEASE_ONLY;
         private Log log;
+        private String groupId;
+        private String artifactId;
 
         public Builder setRepositoryDirectory(final File repositoryDirectory) {
             this.repositoryDirectory = repositoryDirectory;
@@ -287,6 +305,16 @@ public class BulkUploader {
 
         public BulkUploader build() {
             return new BulkUploader(this);
+        }
+
+        public Builder setGroupId(String groupId) {
+            this.groupId = groupId;
+            return this;
+        }
+
+        public Builder setArtifactId(String artifactId) {
+            this.artifactId = artifactId;
+            return this;
         }
     }
 }

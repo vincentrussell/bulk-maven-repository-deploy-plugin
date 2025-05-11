@@ -215,6 +215,152 @@ public class BulkImportMojoTest extends AbstractMojoTestCase {
         assertNull(remoteSnapshotArtifactDir.listFiles());
     }
 
+    @Test
+    public void testDeployWithSubDirectoryHighParentDirectory() throws Exception {
+        String config = """
+                <repositoryId>thirdparty</repositoryId>
+                <repositoryUrl>http://localhost:%d/repository/thirdparty/</repositoryUrl>
+                <deploymentType>SNAPSHOT_AND_RELEASE</deploymentType>
+                <repositorySubDirectory>sub-directory</repositorySubDirectory>
+                """.formatted(httpPort);
+
+        File subLocalReleaseArtifactDir = getBaseDirectoryForArtifact(localBaseDir, subDirectory, artifactId, releaseVersion);
+        File subRemoteReleaseArtifactDir = getBaseDirectoryForArtifact(jettyNexusBaseDir, subDirectory, artifactId, releaseVersion);
+        File subRemoteSnapshotArtifactDir = getBaseDirectoryForArtifact(jettyNexusBaseDir, subDirectory, artifactId, snapshotVersion);
+
+        MavenProject mavenProject = readMavenProject(new TestProjectConfig(temporaryFolder).getFile(config).getParentFile());
+        MavenSession session = finishSessionCreation(newMavenSession(mavenProject));
+        simulateLocalMavenFiles(localBaseDir, artifactId, releaseVersion);
+        simulateLocalMavenFiles(localBaseDir, artifactId, snapshotVersion);
+        simulateLocalMavenFiles(localBaseDir, subDirectory, artifactId, releaseVersion);
+        simulateLocalMavenFiles(localBaseDir, subDirectory, artifactId, snapshotVersion);
+
+        MojoExecution execution = newMojoExecution("bulk-import");
+        BulkImportMojo bulkImportMojo = (BulkImportMojo) lookupConfiguredMojo(session, execution);
+        assertNotNull(localReleaseArtifactDir.listFiles());
+        assertNotNull(localSnapshotArtifactDir.listFiles());
+        assertNull(remoteReleaseArtifactDir.listFiles());
+        assertNull(remoteSnapshotArtifactDir.listFiles());
+        assertFalse(new File(remoteSnapshotArtifactDir, "maven-metadata.xml").exists());
+
+        bulkImportMojo.execute();
+
+        verifyDirsAreEqual(subLocalReleaseArtifactDir.toPath(), subRemoteReleaseArtifactDir.toPath());
+        //cant verify that directories are equal with snapshot because a timestamp is added to the filename
+        assertTrue(new File(subRemoteSnapshotArtifactDir, "maven-metadata.xml").exists());
+        assertNull(remoteReleaseArtifactDir.listFiles());
+        assertNull(remoteSnapshotArtifactDir.listFiles());
+    }
+
+
+    @Test
+    public void testRestrictToGroupId() throws Exception {
+        String config = """
+                <repositoryId>thirdparty</repositoryId>
+                <repositoryUrl>http://localhost:%d/repository/thirdparty/</repositoryUrl>
+                <groupId>com.github.vincentrussell</groupId>
+                """.formatted(httpPort);
+
+        MavenProject mavenProject = readMavenProject(new TestProjectConfig(temporaryFolder).getFile(config).getParentFile());
+        MavenSession session = finishSessionCreation(newMavenSession(mavenProject));
+        simulateLocalMavenFiles(localBaseDir, artifactId, releaseVersion);
+        simulateLocalMavenFiles(localBaseDir, artifactId, snapshotVersion);
+
+        MojoExecution execution = newMojoExecution("bulk-import");
+        BulkImportMojo bulkImportMojo = (BulkImportMojo) lookupConfiguredMojo(session, execution);
+        assertNotNull(localReleaseArtifactDir.listFiles());
+        assertNotNull(localSnapshotArtifactDir.listFiles());
+        assertNull(remoteReleaseArtifactDir.listFiles());
+        assertNull(remoteSnapshotArtifactDir.listFiles());
+        assertFalse(new File(remoteSnapshotArtifactDir, "maven-metadata.xml").exists());
+
+        bulkImportMojo.execute();
+
+        assertTrue(Paths.get(remoteReleaseArtifactDir.getAbsolutePath(), "cool-artifact-1.0.pom".split("/")).toFile().exists());
+    }
+
+    @Test
+    public void testRestrictToGroupIdAndArtifactid() throws Exception {
+        String config = """
+                <repositoryId>thirdparty</repositoryId>
+                <repositoryUrl>http://localhost:%d/repository/thirdparty/</repositoryUrl>
+                <groupId>com.github.vincentrussell</groupId>
+                <artifactId>cool-artifact</artifactId>
+                """.formatted(httpPort);
+
+        MavenProject mavenProject = readMavenProject(new TestProjectConfig(temporaryFolder).getFile(config).getParentFile());
+        MavenSession session = finishSessionCreation(newMavenSession(mavenProject));
+        simulateLocalMavenFiles(localBaseDir, artifactId, releaseVersion);
+        simulateLocalMavenFiles(localBaseDir, artifactId, snapshotVersion);
+
+        MojoExecution execution = newMojoExecution("bulk-import");
+        BulkImportMojo bulkImportMojo = (BulkImportMojo) lookupConfiguredMojo(session, execution);
+        assertNotNull(localReleaseArtifactDir.listFiles());
+        assertNotNull(localSnapshotArtifactDir.listFiles());
+        assertNull(remoteReleaseArtifactDir.listFiles());
+        assertNull(remoteSnapshotArtifactDir.listFiles());
+        assertFalse(new File(remoteSnapshotArtifactDir, "maven-metadata.xml").exists());
+
+        bulkImportMojo.execute();
+
+        assertTrue(Paths.get(remoteReleaseArtifactDir.getAbsolutePath(), "cool-artifact-1.0.pom".split("/")).toFile().exists());
+    }
+
+    @Test
+    public void testRestrictToGroupIdBadGroup() throws Exception {
+        String config = """
+                <repositoryId>thirdparty</repositoryId>
+                <repositoryUrl>http://localhost:%d/repository/thirdparty/</repositoryUrl>
+                <groupId>com.github.nope</groupId>
+                """.formatted(httpPort);
+
+        MavenProject mavenProject = readMavenProject(new TestProjectConfig(temporaryFolder).getFile(config).getParentFile());
+        MavenSession session = finishSessionCreation(newMavenSession(mavenProject));
+        simulateLocalMavenFiles(localBaseDir, artifactId, releaseVersion);
+        simulateLocalMavenFiles(localBaseDir, artifactId, snapshotVersion);
+
+        MojoExecution execution = newMojoExecution("bulk-import");
+        BulkImportMojo bulkImportMojo = (BulkImportMojo) lookupConfiguredMojo(session, execution);
+        assertNotNull(localReleaseArtifactDir.listFiles());
+        assertNotNull(localSnapshotArtifactDir.listFiles());
+        assertNull(remoteReleaseArtifactDir.listFiles());
+        assertNull(remoteSnapshotArtifactDir.listFiles());
+        assertFalse(new File(remoteSnapshotArtifactDir, "maven-metadata.xml").exists());
+
+        bulkImportMojo.execute();
+
+        assertNull(remoteReleaseArtifactDir.listFiles());
+        assertNull(remoteSnapshotArtifactDir.listFiles());
+    }
+
+    @Test
+    public void testRestrictToGroupIdBadArtifactId() throws Exception {
+        String config = """
+                <repositoryId>thirdparty</repositoryId>
+                <repositoryUrl>http://localhost:%d/repository/thirdparty/</repositoryUrl>
+                <groupId>com.github.vincentrussell</groupId>
+                <artifactId>bad-artifact</artifactId>
+                """.formatted(httpPort);
+
+        MavenProject mavenProject = readMavenProject(new TestProjectConfig(temporaryFolder).getFile(config).getParentFile());
+        MavenSession session = finishSessionCreation(newMavenSession(mavenProject));
+        simulateLocalMavenFiles(localBaseDir, artifactId, releaseVersion);
+        simulateLocalMavenFiles(localBaseDir, artifactId, snapshotVersion);
+
+        MojoExecution execution = newMojoExecution("bulk-import");
+        BulkImportMojo bulkImportMojo = (BulkImportMojo) lookupConfiguredMojo(session, execution);
+        assertNotNull(localReleaseArtifactDir.listFiles());
+        assertNotNull(localSnapshotArtifactDir.listFiles());
+        assertNull(remoteReleaseArtifactDir.listFiles());
+        assertNull(remoteSnapshotArtifactDir.listFiles());
+        assertFalse(new File(remoteSnapshotArtifactDir, "maven-metadata.xml").exists());
+
+        bulkImportMojo.execute();
+
+        assertNull(remoteReleaseArtifactDir.listFiles());
+        assertNull(remoteSnapshotArtifactDir.listFiles());
+    }
+
     private static void verifyDirsAreEqual(final Path one, final Path other) throws IOException {
         Files.walkFileTree(one, new SimpleFileVisitor<>() {
 
